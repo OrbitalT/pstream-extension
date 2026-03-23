@@ -1,0 +1,102 @@
+name: Build and Release Chrome Extension
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # 1. LINTING
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Install packages
+        run: pnpm install
+
+      - name: Run linting
+        run: pnpm run lint
+
+  # 2. BUILD
+  build:
+    name: Build Chrome Extension
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+                  
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+    
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install pnpm packages
+        run: pnpm install
+      
+      - name: Build chrome project
+        run: pnpm run build
+      
+      - name: Package for chrome
+        run: pnpm run package
+
+      - name: Upload chrome package
+        uses: actions/upload-artifact@v4
+        with:
+          name: chrome-extension
+          path: ./build/chrome-mv3-prod.zip
+
+  # 3. RELEASE TO GITHUB
+  release:
+    name: Create GitHub Release
+    needs: build
+    # Only run the release job on pushes (not PRs) or manual triggers
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write 
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Chrome artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: chrome-extension
+          path: ./chrome
+
+      - name: Get version
+        id: package-version
+        uses: martinbeentjes/npm-get-version-action@main
+
+      - name: Create Release and Upload Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.package-version.outputs.current-version }}
+          name: Extension v${{ steps.package-version.outputs.current-version }}
+          draft: false
+          prerelease: false
+          files: ./chrome/chrome-mv3-prod.zip
